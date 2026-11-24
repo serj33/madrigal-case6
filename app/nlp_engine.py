@@ -292,6 +292,19 @@ def _normalize_unprotected(segment: str, transformations: list[dict], warnings: 
         return value
 
     segment = YEAR_RE.sub(replace_year, segment)
+
+    # A year written before "году" is an ordinal in the prepositional case,
+    # not a cardinal number ("двадцать шестом", not "двадцать шесть").
+    def replace_year_in_godu(match: re.Match[str]) -> str:
+        year = int(match.group(1))
+        if not 2000 <= year <= 2099:
+            warnings.append(f"Год «{match.group(0)} году» не поддерживается MVP-правилом и оставлен без изменений.")
+            return match.group(0)
+        value = _year_to_words(year).removesuffix(" году")
+        transformations.append({"type": "year", "original": match.group(0), "replacement": value, "reason": "Склонение года перед словом «году»"})
+        return value
+
+    segment = YEAR_IN_GODU_RE.sub(replace_year_in_godu, segment)
     segment = _replace_with_diagnostics(
         segment,
         TIME_RE,
