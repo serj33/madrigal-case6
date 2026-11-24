@@ -169,17 +169,41 @@ def _time_to_words(hour: int, minute: int) -> str:
 
 
 def _year_to_words(year: int) -> str:
-    """Return an unambiguous prepositional year form for 2000..2099."""
+    """Return a prepositional ordinal year form for 1000..2099."""
+    if not 1000 <= year <= 2099:
+        raise ValueError("Поддерживаются годы от 1000 до 2099.")
     if year == 2000:
         return "двухтысячном году"
-    suffix = year - 2000
-    if suffix < 20:
-        ordinal = ORDINAL_1_TO_19[suffix - 1]
-    elif suffix % 10 == 0:
-        ordinal = ORDINAL_TENS[suffix]
+    if year > 2000:
+        remainder = year - 2000
+        prefix = "две тысячи"
     else:
-        ordinal = f"{TENS[suffix // 10]} {ORDINAL_1_TO_19[suffix % 10 - 1]}"
-    return f"две тысячи {ordinal} году"
+        remainder = year - 1000
+        prefix = "тысяча"
+        if remainder == 0:
+            return "тысячном году"
+
+    hundreds, tail = divmod(remainder, 100)
+    parts = [prefix]
+    if hundreds:
+        parts.append(HUNDREDS[hundreds])
+    if tail == 0:
+        ordinal_hundreds = {
+            1: "сотом", 2: "двухсотом", 3: "трёхсотом", 4: "четырёхсотом",
+            5: "пятисотом", 6: "шестисотом", 7: "семисотом",
+            8: "восьмисотом", 9: "девятисотом",
+        }
+        if hundreds:
+            parts[-1] = ordinal_hundreds[hundreds]
+        return " ".join(parts) + " году"
+    if 1 <= tail <= 19:
+        parts.append(ORDINAL_1_TO_19[tail - 1])
+    elif tail in ORDINAL_TENS:
+        parts.append(ORDINAL_TENS[tail])
+    else:
+        tens, unit = divmod(tail, 10)
+        parts.extend((TENS[tens], ORDINAL_1_TO_19[unit - 1]))
+    return " ".join(parts) + " году"
 
 
 def _protect_spans(text: str) -> list[tuple[int, int]]:
@@ -262,8 +286,9 @@ def auto_resolve_pronunciations(text: str) -> dict:
         option_id, confidence = _auto_choice(text, ambiguity)
         choices[ambiguity["id"]] = option_id
         decisions.append({"ambiguity_id": ambiguity["id"], "word": ambiguity["word"], "option_id": option_id, "confidence": confidence})
-    prepared = apply_pronunciation_choices(text, choices)
+    prepared = _apply_resolved_choices(text, choices)
     prepared["auto_decisions"] = decisions
+    prepared["normalized_text"] = analysis["normalized_text"]
     return prepared
 
 def _replace_with_diagnostics(
@@ -378,7 +403,7 @@ def analyze_text(text: str) -> dict:
         "warnings": list(dict.fromkeys(warnings)),
     }
 
-def apply_pronunciation_choices(text: str, choices: dict[str, str]) -> dict:
+def _apply_resolved_choices(text: str, choices: dict[str, str]) -> dict:
     """Validate choices and prepare text for the TTS adapter.
 
     Chosen forms use Silero's ``+`` stress marker. Replacements are derived
