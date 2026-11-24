@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Callable
-from app.pronunciation_dictionary import load_entries
 
 
 ACCENT = "\u0301"
@@ -199,8 +198,7 @@ def _is_protected(index: int, spans: list[tuple[int, int]]) -> bool:
 
 
 def _find_ambiguities(text: str, protected: list[tuple[int, int]]) -> list[dict]:
-    custom = {entry["word"]: Homograph(tuple(entry["options"])) for entry in load_entries()}
-    lexicon = HOMOGRAPH_FORMS | custom
+    lexicon = HOMOGRAPH_FORMS
     pattern = re.compile(r"(?<![А-Яа-яЁё])(" + "|".join(map(re.escape, lexicon)) + r")(?![А-Яа-яЁё])", re.IGNORECASE)
     ambiguities: list[dict] = []
     for match in pattern.finditer(text):
