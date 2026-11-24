@@ -287,6 +287,15 @@ def auto_resolve_pronunciations(text: str) -> dict:
         choices[ambiguity["id"]] = option_id
         decisions.append({"ambiguity_id": ambiguity["id"], "word": ambiguity["word"], "option_id": option_id, "confidence": confidence})
     prepared = _apply_resolved_choices(text, choices)
+    # Keep the UI-facing normalized text conservative, but spell out older
+    # years in the TTS-only string so Silero never receives a bare year numeral.
+    def expand_tts_year(match: re.Match[str]) -> str:
+        year = int(match.group(1))
+        if 1000 <= year <= 2099:
+            return _year_to_words(year)
+        return match.group(0)
+
+    prepared["text_used"] = YEAR_IN_GODU_RE.sub(expand_tts_year, prepared["text_used"])
     prepared["auto_decisions"] = decisions
     prepared["normalized_text"] = analysis["normalized_text"]
     return prepared
