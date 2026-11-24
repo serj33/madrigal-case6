@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import MAX_TEXT_LENGTH
 
@@ -22,6 +22,8 @@ class TextRequest(BaseModel):
 
 
 class SynthesizeRequest(TextRequest):
+    model_config = ConfigDict(extra="forbid")
+
     mode: SynthesisMode
     voice: str | None = None
 
