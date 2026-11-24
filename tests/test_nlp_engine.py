@@ -140,3 +140,16 @@ def test_auto_resolves_context_and_passes_stress_markers() -> None:
     assert "мук+а" in food["text_used"]
     assert "м+уки" in pain["text_used"]
     assert all(item["confidence"] in {"высокая", "средняя", "низкая"} for item in building["auto_decisions"])
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("В 2026 году", "В две тысячи двадцать шестом году"),
+        ("В 2021 году", "В две тысячи двадцать первом году"),
+        ("В 2000 году", "В двухтысячном году"),
+        ("В 1999 году", "В 1999 году"),
+    ],
+)
+def test_year_before_godu_uses_ordinal_prepositional_form(text: str, expected: str) -> None:
+    assert analyze_text(text)["normalized_text"] == expected
