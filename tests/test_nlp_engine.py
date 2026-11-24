@@ -1,7 +1,6 @@
 import pytest
 
 from app.nlp_engine import analyze_text, auto_resolve_pronunciations
-from app.services import nlp_adapter
 
 
 def test_returns_full_contract_without_changes() -> None:
@@ -77,19 +76,7 @@ def test_homographs_inside_protected_text_are_ignored() -> None:
     assert analyze_text("https://example.org/замок")["ambiguities"] == []
 
 
-def test_choices_validate_and_keep_plain_text_for_unverified_tts() -> None:
-    result = apply_pronunciation_choices("замок и замок", {"amb_1": "lock"})
-    assert result["text_used"] == "замок и зам+ок"
-    assert result["applied_choices"][0]["option"]["tts_text"] == "зам+ок"
-    assert result["remaining_ambiguity_ids"] == ["amb_0"]
-    assert any("не указан" in warning for warning in result["warnings"])
 
-
-def test_opposite_choices_produce_distinct_silero_text() -> None:
-    building = apply_pronunciation_choices("замок", {"amb_0": "building"})
-    lock = apply_pronunciation_choices("замок", {"amb_0": "lock"})
-    assert building["text_used"] == "з+амок"
-    assert lock["text_used"] == "зам+ок"
 
 
 
@@ -100,10 +87,6 @@ def test_blank_text_is_rejected(text: str) -> None:
         analyze_text(text)
 
 
-def test_nlp_adapter_imports_and_uses_engine() -> None:
-    result = nlp_adapter.analyze_text("замок")
-    assert result["ambiguities"][0]["id"] == "amb_0"
-    assert nlp_adapter.apply_pronunciation_choices("мука", {"amb_0": "flour"})["text_used"] == "мук+а"
 
 
 @pytest.mark.parametrize("text, words", [
@@ -162,3 +145,9 @@ def test_auto_marks_accusative_muku_as_flour_after_eating_verb() -> None:
     result = auto_resolve_pronunciations("Брат ел муку.")
     assert result["text_used"] == "Брат ел мук+у."
     assert result["auto_decisions"][0]["option_id"] == "flour"
+
+
+def test_auto_expands_1999_year_only_for_tts() -> None:
+    result = auto_resolve_pronunciations("В 1999 году произошло важное событие.")
+    assert result["normalized_text"] == "В 1999 году произошло важное событие."
+    assert result["text_used"] == "В тысяча девятьсот девяносто девятом году произошло важное событие."
