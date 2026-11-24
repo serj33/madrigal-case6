@@ -153,3 +153,17 @@ def test_auto_resolves_context_and_passes_stress_markers() -> None:
 )
 def test_year_before_godu_uses_ordinal_prepositional_form(text: str, expected: str) -> None:
     assert analyze_text(text)["normalized_text"] == expected
+
+
+def test_auto_resolves_repeated_homograph_per_occurrence() -> None:
+    text = "На горе стоял старый замок, а на двери висел новый замок."
+    result = auto_resolve_pronunciations(text)
+    assert result["text_used"] == "На горе стоял старый з+амок, а на двери висел новый зам+ок."
+    assert [item["option_id"] for item in result["auto_decisions"]] == ["building", "lock"]
+
+
+def test_auto_distinguishes_flour_and_torment_forms_in_one_sentence() -> None:
+    text = "Мама мыла раму, пока брат ел муку, а сестра страдала от муки."
+    result = auto_resolve_pronunciations(text)
+    assert result["text_used"] == "Мама мыла раму, пока брат ел мук+у, а сестра страдала от м+уки."
+    assert [item["option_id"] for item in result["auto_decisions"]] == ["flour", "torment"]
