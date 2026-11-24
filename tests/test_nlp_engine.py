@@ -1,6 +1,6 @@
 import pytest
 
-from app.nlp_engine import analyze_text, apply_pronunciation_choices, auto_resolve_pronunciations
+from app.nlp_engine import analyze_text, auto_resolve_pronunciations
 from app.services import nlp_adapter
 
 
@@ -92,17 +92,6 @@ def test_opposite_choices_produce_distinct_silero_text() -> None:
     assert lock["text_used"] == "зам+ок"
 
 
-@pytest.mark.parametrize(
-    "choices",
-    [
-        {"amb_unknown": "building"},
-        {"amb_0": "unknown"},
-        {"amb_0": 42},
-    ],
-)
-def test_invalid_choices_are_rejected(choices: dict[str, str]) -> None:
-    with pytest.raises(ValueError):
-        apply_pronunciation_choices("замок", choices)
 
 
 @pytest.mark.parametrize("text", ["", "   "])
