@@ -68,7 +68,7 @@ HOMOGRAPH_FORMS: dict[str, Homograph] = {
 AUTO_CUES = {
     "building": ("дворец", "корол", "стар", "крепост", "жил", "возвыш", "башн", "на горе", "на холме"),
     "lock": ("двер", "ключ", "висел", "откр", "закр", "запир"),
-    "flour": ("пшен", "пирог", "тест", "мук", "изготов", "готов", "ел", "есть", "просе"),
+    "flour": ("пшен", "пирог", "тест", "изготов", "готов", "ел", "есть", "просе"),
     "torment": ("никак", "достав", "страдан", "мучен", "боль", "от муки", "от мук"),
     "maps": ("карт", "географ", "страниц", "книг"),
     "fabric": ("ткан", "шелк", "плать", "материал"),
@@ -272,8 +272,9 @@ def _auto_choice(text: str, ambiguity: dict) -> tuple[str, str]:
         cues = AUTO_CUES.get(option["id"], ())
         score = sum(cue in context for cue in cues)
         scored.append((score, option["id"]))
-    scored.sort(reverse=True)
-    top_score, option_id = scored[0]
+    # max() is stable: ties retain the lexicon order instead of silently
+    # preferring whichever option id sorts last alphabetically.
+    top_score, option_id = max(scored, key=lambda item: item[0])
     confidence = "высокая" if top_score >= 2 else "средняя" if top_score == 1 else "низкая"
     return option_id, confidence
 
