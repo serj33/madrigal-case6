@@ -7,7 +7,6 @@ from app.config import MAX_TEXT_LENGTH
 
 class SynthesisMode(str, Enum):
     base = "base"
-    improved = "improved"
     auto = "auto"
 
 
@@ -24,7 +23,6 @@ class TextRequest(BaseModel):
 
 class SynthesizeRequest(TextRequest):
     mode: SynthesisMode
-    choices: dict[str, str] = Field(default_factory=dict)
     voice: str | None = None
 
 
