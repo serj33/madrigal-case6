@@ -63,10 +63,10 @@ HOMOGRAPH_FORMS: dict[str, Homograph] = {
 }
 
 AUTO_CUES = {
-    "building": ("дворец", "корол", "стар", "крепост", "жил", "возвыш", "башн"),
+    "building": ("дворец", "корол", "стар", "крепост", "жил", "возвыш", "башн", "на горе", "на холме"),
     "lock": ("двер", "ключ", "висел", "откр", "закр", "запир"),
-    "flour": ("пшен", "пирог", "тест", "мук", "изготов", "готов"),
-    "torment": ("никак", "достав", "страдан", "мучен", "боль"),
+    "flour": ("пшен", "пирог", "тест", "мук", "изготов", "готов", "ел", "есть", "просе"),
+    "torment": ("никак", "достав", "страдан", "мучен", "боль", "от муки", "от мук"),
     "maps": ("карт", "географ", "страниц", "книг"),
     "fabric": ("ткан", "шелк", "плать", "материал"),
     "institution": ("власт", "государ", "исполнител", "комитет"),
@@ -216,17 +216,34 @@ def _find_ambiguities(text: str, protected: list[tuple[int, int]]) -> list[dict]
 
 
 def _auto_choice(text: str, ambiguity: dict) -> tuple[str, str]:
-    """Choose a documented heuristic option and a qualitative confidence."""
-    context = text[max(0, ambiguity["start"] - 80):ambiguity["end"] + 80].lower()
+    """Choose a documented heuristic option using local, occurrence-specific context."""
+    # Restrict context to the current clause. A distant cue for a repeated
+    # homograph must not influence another occurrence in the same sentence.
+    left_bounds = [text.rfind(mark, 0, ambiguity["start"]) for mark in ",;:.!?"]
+    left = max(left_bounds, default=-1) + 1
+    right_candidates = [text.find(mark, ambiguity["end"]) for mark in ",;:.!?"]
+    right_candidates = [position for position in right_candidates if position >= 0]
+    right = min(right_candidates, default=len(text))
+    context = text[left:right].lower()
+    word = ambiguity["word"].lower()
+
+    # Explicit case-sensitive collocations help distinguish the genitive
+    # "муки" (of torment) from accusative "муку" (flour) and from "муки" (flour).
+    if word == "муки":
+        if re.search(r"\\b(?:от|без|из-за|полон|полна|полны|испытал|испытала|испытали)\\s+муки\\b", context):
+            return "torment", "высокая"
+        if re.search(r"\\b(?:ел|ела|ели|купил|купила|купили|добавил|добавила|просеял|просеяла)\\s+муку\\b", context):
+            return "flour", "высокая"
+
     scored = []
     for option in ambiguity["options"]:
-        score = sum(cue in context for cue in AUTO_CUES.get(option["id"], ()))
+        cues = AUTO_CUES.get(option["id"], ())
+        score = sum(cue in context for cue in cues)
         scored.append((score, option["id"]))
     scored.sort(reverse=True)
     top_score, option_id = scored[0]
     confidence = "высокая" if top_score >= 2 else "средняя" if top_score == 1 else "низкая"
     return option_id, confidence
-
 
 def auto_resolve_pronunciations(text: str) -> dict:
     """Prepare all detected ambiguities without pretending the heuristic is certain."""
