@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Callable
-from app.pronunciation_dictionary import load_entries
 
 
 ACCENT = "\u0301"
@@ -52,6 +51,10 @@ HOMOGRAPH_FORMS: dict[str, Homograph] = {
         {"id": "flour", "display": f"муки{ACCENT}", "tts_text": "мук+и", "meaning": "Пищевой продукт"},
         {"id": "torment", "display": f"му{ACCENT}ки", "tts_text": "м+уки", "meaning": "Страдания, мучения"},
     )),
+    "муку": Homograph((
+        {"id": "flour", "display": f"мук{ACCENT}у", "tts_text": "мук+у", "meaning": "Пищевой продукт"},
+        {"id": "torment", "display": f"му{ACCENT}ку", "tts_text": "м+уку", "meaning": "Страдание"},
+    )),
     "атлас": Homograph((
         {"id": "maps", "display": f"а{ACCENT}тлас", "tts_text": "+атлас", "meaning": "Сборник карт"},
         {"id": "fabric", "display": f"атла{ACCENT}с", "tts_text": "атл+ас", "meaning": "Ткань"},
@@ -63,10 +66,10 @@ HOMOGRAPH_FORMS: dict[str, Homograph] = {
 }
 
 AUTO_CUES = {
-    "building": ("дворец", "корол", "стар", "крепост", "жил", "возвыш", "башн"),
+    "building": ("дворец", "корол", "стар", "крепост", "жил", "возвыш", "башн", "на горе", "на холме"),
     "lock": ("двер", "ключ", "висел", "откр", "закр", "запир"),
-    "flour": ("пшен", "пирог", "тест", "мук", "изготов", "готов"),
-    "torment": ("никак", "достав", "страдан", "мучен", "боль"),
+    "flour": ("пшен", "пирог", "тест", "изготов", "готов", "ел", "есть", "просе"),
+    "torment": ("никак", "достав", "страдан", "мучен", "боль", "от муки", "от мук"),
     "maps": ("карт", "географ", "страниц", "книг"),
     "fabric": ("ткан", "шелк", "плать", "материал"),
     "institution": ("власт", "государ", "исполнител", "комитет"),
@@ -83,10 +86,11 @@ PROTECTED_PATTERNS = (
 
 TIME_RE = re.compile(r"(?<!\w)([01]?\d|2[0-3]):([0-5]\d)(?!\w)")
 YEAR_RE = re.compile(r"(?<!\w)(\d{4})\s+г\.(?!\w)", re.IGNORECASE)
+YEAR_IN_GODU_RE = re.compile(r"(?<!\w)(\d{4})(?=\s+году\b)", re.IGNORECASE)
 # A terminal full stop is punctuation, not part of a number.  Dots followed by
 # a digit are protected as decimal/version-like notation; a year plus ``г.``
 # is handled only by the dedicated year rule.
-NUMBER_RE = re.compile(r"(?<![\w.])([0-9]{1,4})(?!\w|\.\d|\s+г\.)", re.IGNORECASE)
+NUMBER_RE = re.compile(r"(?<![\w.])([0-9]{1,4})(?!\w|\.\d|\s+г\.|\s+году\b)", re.IGNORECASE)
 ABBREVIATION_RULES = (
     (re.compile(r"(?<!\w)т\.\s*д\.(?!\w)", re.IGNORECASE), "так далее", "сокращение"),
     (re.compile(r"(?<!\w)т\.\s*п\.(?!\w)", re.IGNORECASE), "тому подобное", "сокращение"),
@@ -165,17 +169,41 @@ def _time_to_words(hour: int, minute: int) -> str:
 
 
 def _year_to_words(year: int) -> str:
-    """Return an unambiguous prepositional year form for 2000..2099."""
+    """Return a prepositional ordinal year form for 1000..2099."""
+    if not 1000 <= year <= 2099:
+        raise ValueError("Поддерживаются годы от 1000 до 2099.")
     if year == 2000:
         return "двухтысячном году"
-    suffix = year - 2000
-    if suffix < 20:
-        ordinal = ORDINAL_1_TO_19[suffix - 1]
-    elif suffix % 10 == 0:
-        ordinal = ORDINAL_TENS[suffix]
+    if year > 2000:
+        remainder = year - 2000
+        prefix = "две тысячи"
     else:
-        ordinal = f"{TENS[suffix // 10]} {ORDINAL_1_TO_19[suffix % 10 - 1]}"
-    return f"две тысячи {ordinal} году"
+        remainder = year - 1000
+        prefix = "тысяча"
+        if remainder == 0:
+            return "тысячном году"
+
+    hundreds, tail = divmod(remainder, 100)
+    parts = [prefix]
+    if hundreds:
+        parts.append(HUNDREDS[hundreds])
+    if tail == 0:
+        ordinal_hundreds = {
+            1: "сотом", 2: "двухсотом", 3: "трёхсотом", 4: "четырёхсотом",
+            5: "пятисотом", 6: "шестисотом", 7: "семисотом",
+            8: "восьмисотом", 9: "девятисотом",
+        }
+        if hundreds:
+            parts[-1] = ordinal_hundreds[hundreds]
+        return " ".join(parts) + " году"
+    if 1 <= tail <= 19:
+        parts.append(ORDINAL_1_TO_19[tail - 1])
+    elif tail in ORDINAL_TENS:
+        parts.append(ORDINAL_TENS[tail])
+    else:
+        tens, unit = divmod(tail, 10)
+        parts.extend((TENS[tens], ORDINAL_1_TO_19[unit - 1]))
+    return " ".join(parts) + " году"
 
 
 def _protect_spans(text: str) -> list[tuple[int, int]]:
@@ -194,8 +222,7 @@ def _is_protected(index: int, spans: list[tuple[int, int]]) -> bool:
 
 
 def _find_ambiguities(text: str, protected: list[tuple[int, int]]) -> list[dict]:
-    custom = {entry["word"]: Homograph(tuple(entry["options"])) for entry in load_entries()}
-    lexicon = HOMOGRAPH_FORMS | custom
+    lexicon = HOMOGRAPH_FORMS
     pattern = re.compile(r"(?<![А-Яа-яЁё])(" + "|".join(map(re.escape, lexicon)) + r")(?![А-Яа-яЁё])", re.IGNORECASE)
     ambiguities: list[dict] = []
     for match in pattern.finditer(text):
@@ -216,17 +243,40 @@ def _find_ambiguities(text: str, protected: list[tuple[int, int]]) -> list[dict]
 
 
 def _auto_choice(text: str, ambiguity: dict) -> tuple[str, str]:
-    """Choose a documented heuristic option and a qualitative confidence."""
-    context = text[max(0, ambiguity["start"] - 80):ambiguity["end"] + 80].lower()
+    """Choose a documented heuristic option using local, occurrence-specific context."""
+    # Restrict context to the current clause. A distant cue for a repeated
+    # homograph must not influence another occurrence in the same sentence.
+    left_bounds = [text.rfind(mark, 0, ambiguity["start"]) for mark in ",;:.!?"]
+    left = max(left_bounds, default=-1) + 1
+    right_candidates = [text.find(mark, ambiguity["end"]) for mark in ",;:.!?"]
+    right_candidates = [position for position in right_candidates if position >= 0]
+    right = min(right_candidates, default=len(text))
+    context = text[left:right].lower()
+    word = ambiguity["word"].lower()
+
+    # Explicit case-sensitive collocations help distinguish the genitive
+    # "муки" (of torment) from accusative "муку" (flour) and from "муки" (flour).
+    if word == "муки":
+        if re.search(r"\b(?:от|без|из-за|полон|полна|полны|испытал|испытала|испытали)\s+муки\b", context):
+            return "torment", "высокая"
+        if re.search(r"\b(?:ел|ела|ели|купил|купила|купили|добавил|добавила|просеял|просеяла)\s+муку\b", context):
+            return "flour", "высокая"
+    if word == "муку":
+        if re.search(r"\b(?:от|без|из-за|полон|полна|полны|испытал|испытала|испытали)\s+муку\b", context):
+            return "torment", "высокая"
+        if re.search(r"\b(?:ел|ела|ели|купил|купила|купили|добавил|добавила|просеял|просеяла)\s+муку\b", context):
+            return "flour", "высокая"
+
     scored = []
     for option in ambiguity["options"]:
-        score = sum(cue in context for cue in AUTO_CUES.get(option["id"], ()))
+        cues = AUTO_CUES.get(option["id"], ())
+        score = sum(cue in context for cue in cues)
         scored.append((score, option["id"]))
-    scored.sort(reverse=True)
-    top_score, option_id = scored[0]
+    # max() is stable: ties retain the lexicon order instead of silently
+    # preferring whichever option id sorts last alphabetically.
+    top_score, option_id = max(scored, key=lambda item: item[0])
     confidence = "высокая" if top_score >= 2 else "средняя" if top_score == 1 else "низкая"
     return option_id, confidence
-
 
 def auto_resolve_pronunciations(text: str) -> dict:
     """Prepare all detected ambiguities without pretending the heuristic is certain."""
@@ -237,8 +287,18 @@ def auto_resolve_pronunciations(text: str) -> dict:
         option_id, confidence = _auto_choice(text, ambiguity)
         choices[ambiguity["id"]] = option_id
         decisions.append({"ambiguity_id": ambiguity["id"], "word": ambiguity["word"], "option_id": option_id, "confidence": confidence})
-    prepared = apply_pronunciation_choices(text, choices)
+    prepared = _apply_resolved_choices(text, choices)
+    # Keep the UI-facing normalized text conservative, but spell out older
+    # years in the TTS-only string so Silero never receives a bare year numeral.
+    def expand_tts_year(match: re.Match[str]) -> str:
+        year = int(match.group(1))
+        if 1000 <= year <= 2099:
+            return _year_to_words(year)
+        return match.group(0)
+
+    prepared["text_used"] = YEAR_IN_GODU_RE.sub(expand_tts_year, prepared["text_used"])
     prepared["auto_decisions"] = decisions
+    prepared["normalized_text"] = analysis["normalized_text"]
     return prepared
 
 def _replace_with_diagnostics(
@@ -275,6 +335,19 @@ def _normalize_unprotected(segment: str, transformations: list[dict], warnings: 
         return value
 
     segment = YEAR_RE.sub(replace_year, segment)
+
+    # A year written before "году" is an ordinal in the prepositional case,
+    # not a cardinal number ("двадцать шестом", not "двадцать шесть").
+    def replace_year_in_godu(match: re.Match[str]) -> str:
+        year = int(match.group(1))
+        if not 2000 <= year <= 2099:
+            warnings.append(f"Год «{match.group(0)} году» не поддерживается MVP-правилом и оставлен без изменений.")
+            return match.group(0)
+        value = _year_to_words(year).removesuffix(" году")
+        transformations.append({"type": "year", "original": match.group(0), "replacement": value, "reason": "Склонение года перед словом «году»"})
+        return value
+
+    segment = YEAR_IN_GODU_RE.sub(replace_year_in_godu, segment)
     segment = _replace_with_diagnostics(
         segment,
         TIME_RE,
@@ -294,13 +367,21 @@ def _normalize_unprotected(segment: str, transformations: list[dict], warnings: 
         if re.search(rf"(?<!\w){re.escape(abbreviation)}(?!\w)", segment, re.IGNORECASE):
             warnings.append(f"Сокращение «{abbreviation}» оставлено без изменений: MVP не определяет его форму без контекста.")
 
-    return _replace_with_diagnostics(
+    def number_replacement(match: re.Match[str]) -> tuple[str, str]:
+        # A four-digit number immediately followed by «году» is a year.
+        # Unsupported years (for example, 1999) must remain numeric.
+        if len(match.group(1)) == 4 and re.match(r"\s+году\b", match.string[match.end():], re.IGNORECASE):
+            return match.group(1), "Год вне поддерживаемого диапазона оставлен без изменений"
+        return _number_to_words(int(match.group(1))), "Нормализация целого числа"
+
+    segment = _replace_with_diagnostics(
         segment,
         NUMBER_RE,
-        lambda match: (_number_to_words(int(match.group(1))), "Нормализация целого числа"),
+        number_replacement,
         "number",
         transformations,
     )
+    return segment
 
 
 def analyze_text(text: str) -> dict:
@@ -332,7 +413,7 @@ def analyze_text(text: str) -> dict:
         "warnings": list(dict.fromkeys(warnings)),
     }
 
-def apply_pronunciation_choices(text: str, choices: dict[str, str]) -> dict:
+def _apply_resolved_choices(text: str, choices: dict[str, str]) -> dict:
     """Validate choices and prepare text for the TTS adapter.
 
     Chosen forms use Silero's ``+`` stress marker. Replacements are derived

@@ -2,7 +2,7 @@
 
 The NLP module is intentionally not implemented in the backend.  Once added,
 ``app.nlp_engine`` must expose ``analyze_text(text)`` and
-``apply_pronunciation_choices(text, choices)``.
+``auto_resolve_pronunciations(text)``.
 """
 
 from importlib import import_module
@@ -31,19 +31,6 @@ def analyze_text(text: str) -> dict[str, Any]:
     return result
 
 
-def apply_pronunciation_choices(text: str, choices: dict[str, str]) -> dict[str, Any]:
-    engine = _engine()
-    function = getattr(engine, "apply_pronunciation_choices", None)
-    if not callable(function):
-        raise IntegrationContractError(
-            "NLP-модуль не предоставляет apply_pronunciation_choices(text, choices)."
-        )
-    result = function(text, choices)
-    if not isinstance(result, dict) or not isinstance(result.get("text_used"), str):
-        raise IntegrationContractError(
-            "NLP должен вернуть объект с полем text_used для синтеза."
-        )
-    return result
 
 
 def auto_resolve_pronunciations(text: str) -> dict[str, Any]:

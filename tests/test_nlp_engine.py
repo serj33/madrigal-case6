@@ -1,7 +1,6 @@
 import pytest
 
-from app.nlp_engine import analyze_text, apply_pronunciation_choices, auto_resolve_pronunciations
-from app.services import nlp_adapter
+from app.nlp_engine import analyze_text, auto_resolve_pronunciations
 
 
 def test_returns_full_contract_without_changes() -> None:
@@ -77,32 +76,9 @@ def test_homographs_inside_protected_text_are_ignored() -> None:
     assert analyze_text("https://example.org/замок")["ambiguities"] == []
 
 
-def test_choices_validate_and_keep_plain_text_for_unverified_tts() -> None:
-    result = apply_pronunciation_choices("замок и замок", {"amb_1": "lock"})
-    assert result["text_used"] == "замок и зам+ок"
-    assert result["applied_choices"][0]["option"]["tts_text"] == "зам+ок"
-    assert result["remaining_ambiguity_ids"] == ["amb_0"]
-    assert any("не указан" in warning for warning in result["warnings"])
 
 
-def test_opposite_choices_produce_distinct_silero_text() -> None:
-    building = apply_pronunciation_choices("замок", {"amb_0": "building"})
-    lock = apply_pronunciation_choices("замок", {"amb_0": "lock"})
-    assert building["text_used"] == "з+амок"
-    assert lock["text_used"] == "зам+ок"
 
-
-@pytest.mark.parametrize(
-    "choices",
-    [
-        {"amb_unknown": "building"},
-        {"amb_0": "unknown"},
-        {"amb_0": 42},
-    ],
-)
-def test_invalid_choices_are_rejected(choices: dict[str, str]) -> None:
-    with pytest.raises(ValueError):
-        apply_pronunciation_choices("замок", choices)
 
 
 @pytest.mark.parametrize("text", ["", "   "])
@@ -111,10 +87,6 @@ def test_blank_text_is_rejected(text: str) -> None:
         analyze_text(text)
 
 
-def test_nlp_adapter_imports_and_uses_engine() -> None:
-    result = nlp_adapter.analyze_text("замок")
-    assert result["ambiguities"][0]["id"] == "amb_0"
-    assert nlp_adapter.apply_pronunciation_choices("мука", {"amb_0": "flour"})["text_used"] == "мук+а"
 
 
 @pytest.mark.parametrize("text, words", [
@@ -140,3 +112,42 @@ def test_auto_resolves_context_and_passes_stress_markers() -> None:
     assert "мук+а" in food["text_used"]
     assert "м+уки" in pain["text_used"]
     assert all(item["confidence"] in {"высокая", "средняя", "низкая"} for item in building["auto_decisions"])
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("В 2026 году", "В две тысячи двадцать шестом году"),
+        ("В 2021 году", "В две тысячи двадцать первом году"),
+        ("В 2000 году", "В двухтысячном году"),
+        ("В 1999 году", "В 1999 году"),
+    ],
+)
+def test_year_before_godu_uses_ordinal_prepositional_form(text: str, expected: str) -> None:
+    assert analyze_text(text)["normalized_text"] == expected
+
+
+def test_auto_resolves_repeated_homograph_per_occurrence() -> None:
+    text = "На горе стоял старый замок, а на двери висел новый замок."
+    result = auto_resolve_pronunciations(text)
+    assert result["text_used"] == "На горе стоял старый з+амок, а на двери висел новый зам+ок."
+    assert [item["option_id"] for item in result["auto_decisions"]] == ["building", "lock"]
+
+
+def test_auto_distinguishes_flour_and_torment_forms_in_one_sentence() -> None:
+    text = "Мама мыла раму, пока брат ел муку, а сестра страдала от муки."
+    result = auto_resolve_pronunciations(text)
+    assert result["text_used"] == "Мама мыла раму, пока брат ел мук+у, а сестра страдала от м+уки."
+    assert [item["option_id"] for item in result["auto_decisions"]] == ["flour", "torment"]
+
+
+def test_auto_marks_accusative_muku_as_flour_after_eating_verb() -> None:
+    result = auto_resolve_pronunciations("Брат ел муку.")
+    assert result["text_used"] == "Брат ел мук+у."
+    assert result["auto_decisions"][0]["option_id"] == "flour"
+
+
+def test_auto_expands_1999_year_only_for_tts() -> None:
+    result = auto_resolve_pronunciations("В 1999 году произошло важное событие.")
+    assert result["normalized_text"] == "В 1999 году произошло важное событие."
+    assert result["text_used"] == "В тысяча девятьсот девяносто девятом году произошло важное событие."

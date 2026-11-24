@@ -1,12 +1,55 @@
-const $=id=>document.getElementById(id),text=$("text"),choices={};let busy=false,editing=null;
-const setStatus=m=>$("status").textContent=m;
-function clearResult(){$("player").pause();$("player").removeAttribute("src");$("result").hidden=true}
-function sentenceContext(value,start,end){const left=Math.max(value.lastIndexOf(".",start-1)+1,value.lastIndexOf("!",start-1)+1,value.lastIndexOf("?",start-1)+1),right=[value.indexOf(".",end),value.indexOf("!",end),value.indexOf("?",end)].filter(x=>x>=0).sort((a,b)=>a-b)[0]??value.length;return value.slice(left,right).trim()}
-text.oninput=()=>{$("counter").textContent=`${text.value.length} / 2000`;Object.keys(choices).forEach(k=>delete choices[k]);$("analysis").hidden=true;clearResult()};
-async function analyze(){if(!text.value.trim())return setStatus("Введите текст.");setStatus("Анализ…");try{const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:text.value})}),d=await r.json();if(!r.ok)throw new Error(d.detail||"Ошибка анализа");$("analysis").hidden=false;$("normalized").textContent=`Подготовленный текст: ${d.normalized_text}`;const box=$("ambiguities");box.replaceChildren();d.ambiguities.forEach((a,index)=>{const card=document.createElement("article");card.className="choice";const head=document.createElement("div");head.className="choice-head";head.append(`${index+1}. `);const word=document.createElement("strong");word.textContent=a.word;head.append(word);card.append(head);const context=document.createElement("p");context.className="choice-context";context.textContent=`Контекст: «${sentenceContext(text.value,a.start,a.end)}»`;card.append(context);a.options.forEach(o=>{const label=document.createElement("label"),radio=document.createElement("input");label.className="option";radio.type="radio";radio.name=a.id;radio.value=o.id;radio.onchange=()=>choices[a.id]=o.id;label.append(radio,`${o.display} — ${o.meaning}`);card.append(label)});box.append(card)});$("warnings").textContent=d.warnings.join(" ");setStatus(d.ambiguities.length?"Выберите варианты для IMPROVED или используйте AUTO.":"Анализ готов.")}catch(e){setStatus(e.message||"Ошибка анализа.")}}
-async function synthesize(mode){if(busy)return;if(!text.value.trim())return setStatus("Введите текст.");busy=true;["base","improved","auto"].forEach(id=>$(id).disabled=true);setStatus("Генерация…");try{const r=await fetch("/api/synthesize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:text.value,mode,choices})}),d=await r.json();if(!r.ok)throw new Error(typeof d.detail==="string"?d.detail:"Нужен выбор произношения.");$("result").hidden=false;$("player").src=d.audio_url;$("download").href=d.audio_url;$("metrics").textContent=`${d.mode}: ${d.duration_seconds.toFixed(2)} с, генерация ${d.generation_seconds.toFixed(2)} с`;const decisions=$("auto-decisions");decisions.replaceChildren();(d.auto_decisions||[]).forEach(x=>{const p=document.createElement("p");p.textContent=`AUTO: ${x.word} → ${x.option_id} (уверенность: ${x.confidence})`;decisions.append(p)});setStatus("Готово.")}catch(e){setStatus(e.message)}finally{busy=false;["base","improved","auto"].forEach(id=>$(id).disabled=false)}}
-function addVariant(value={}){const row=document.createElement("div");row.className="variant";[["Значение","meaning",value.meaning,""],["Произношение","tts",value.tts_text,"атл+ас"],["Отображение","display",value.display,"атла́с"]].forEach(([caption,klass,current,placeholder])=>{const label=document.createElement("label"),input=document.createElement("input");label.append(caption);input.className=klass;input.required=true;input.placeholder=placeholder;input.value=current||"";label.append(input);row.append(label)});const remove=document.createElement("button");remove.type="button";remove.className="remove-variant";remove.textContent="Удалить";remove.onclick=()=>{if($("variant-fields").children.length>1)row.remove();else $("dictionary-status").textContent="Нужен хотя бы один вариант."};row.append(remove);$("variant-fields").append(row)}
-function resetEditor(){$("dictionary-form").reset();$("variant-fields").replaceChildren();addVariant();editing=null;$("cancel-edit").hidden=true;$("save-dictionary").textContent="Сохранить слово"}
-async function loadDictionary(){const box=$("dictionary-entries");try{const r=await fetch("/api/pronunciations"),d=await r.json();box.replaceChildren();d.entries.forEach(entry=>{const row=document.createElement("article");row.className="entry";const title=document.createElement("strong");title.textContent=`${entry.word} — ${entry.options.length} варианта`;row.append(title);entry.options.forEach(o=>{const p=document.createElement("p");p.textContent=`${o.display}: ${o.meaning} (${o.tts_text})`;row.append(p)});const actions=document.createElement("div");actions.className="entry-actions";const edit=document.createElement("button"),del=document.createElement("button");edit.textContent="Редактировать";del.textContent="Удалить";edit.onclick=()=>{resetEditor();editing=entry.word;$("dictionary-word").value=entry.word;$("variant-fields").replaceChildren();entry.options.forEach(addVariant);$("cancel-edit").hidden=false;$("save-dictionary").textContent="Сохранить изменения"};del.onclick=async()=>{if(confirm(`Удалить «${entry.word}»?`)){await fetch(`/api/pronunciations/${encodeURIComponent(entry.word)}`,{method:"DELETE"});loadDictionary()}};actions.append(edit,del);row.append(actions);box.append(row)})}catch{box.textContent="Не удалось загрузить словарь."}}
-$("dictionary-form").onsubmit=async event=>{event.preventDefault();const status=$("dictionary-status"),word=$("dictionary-word").value.trim(),options=[...document.querySelectorAll(".variant")].map((row,i)=>({id:`variant_${i+1}`,meaning:row.querySelector(".meaning").value.trim(),tts_text:row.querySelector(".tts").value.trim(),display:row.querySelector(".display").value.trim()}));try{const path=editing?`/api/pronunciations/${encodeURIComponent(editing)}`:"/api/pronunciations",method=editing?"PUT":"POST",r=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:JSON.stringify({word,options})}),d=await r.json();if(!r.ok)throw new Error(d.detail||"Не удалось сохранить слово.");status.textContent=`Слово «${d.word}» сохранено.`;resetEditor();loadDictionary()}catch(error){status.textContent=error.message||"Проверьте заполнение вариантов."}};
-$("add-variant").onclick=()=>addVariant();$("cancel-edit").onclick=resetEditor;$("analyze").onclick=analyze;$("base").onclick=()=>synthesize("base");$("improved").onclick=()=>synthesize("improved");$("auto").onclick=()=>synthesize("auto");resetEditor();loadDictionary();
+const $ = id => document.getElementById(id);
+const text = $("text");
+let busy = false;
+
+function setStatus(message) { $("status").textContent = message; }
+function clearResult() {
+  $("player").pause();
+  $("player").removeAttribute("src");
+  $("result").hidden = true;
+}
+text.oninput = () => {
+  $("counter").textContent = `${text.value.length} / 2000`;
+  clearResult();
+};
+
+async function synthesize(mode) {
+  if (busy) return;
+  if (!text.value.trim()) return setStatus("Введите текст.");
+  busy = true;
+  $("base").disabled = true;
+  $("auto").disabled = true;
+  setStatus(mode === "base" ? "Синтез исходного текста…" : "AUTO анализирует и подготавливает текст…");
+  try {
+    const response = await fetch("/api/synthesize", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text: text.value, mode})
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Не удалось выполнить синтез.");
+    $("result").hidden = false;
+    $("player").src = data.audio_url;
+    $("download").href = data.audio_url;
+    $("metrics").textContent = `${data.mode.toUpperCase()}: ${data.duration_seconds.toFixed(2)} с; генерация ${data.generation_seconds.toFixed(2)} с`;
+    $("normalized-text").textContent = data.normalized_text || text.value;
+    $("text-used").textContent = data.text_used;
+    const decisions = $("auto-decisions");
+    decisions.replaceChildren();
+    (data.auto_decisions || []).forEach(item => {
+      const p = document.createElement("p");
+      p.textContent = `${item.word} → ${item.option_id}; уверенность: ${item.confidence}`;
+      decisions.append(p);
+    });
+    $("warnings").textContent = (data.warnings || []).join(" ");
+    setStatus("Готово.");
+  } catch (error) {
+    setStatus(error.message || "Ошибка синтеза.");
+  } finally {
+    busy = false;
+    $("base").disabled = false;
+    $("auto").disabled = false;
+  }
+}
+$("base").onclick = () => synthesize("base");
+$("auto").onclick = () => synthesize("auto");
