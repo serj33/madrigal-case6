@@ -91,7 +91,7 @@ YEAR_IN_GODU_RE = re.compile(r"(?<!\w)(\d{4})(?=\s+году\b)", re.IGNORECASE)
 # A terminal full stop is punctuation, not part of a number.  Dots followed by
 # a digit are protected as decimal/version-like notation; a year plus ``г.``
 # is handled only by the dedicated year rule.
-NUMBER_RE = re.compile(r"(?<![\w.])([0-9]{1,4})(?!\w|\.\d|\s+г\.)", re.IGNORECASE)
+NUMBER_RE = re.compile(r"(?<![\w.])([0-9]{1,4})(?!\w|\.\d|\s+г\.|\s+году\b)", re.IGNORECASE)
 ABBREVIATION_RULES = (
     (re.compile(r"(?<!\w)т\.\s*д\.(?!\w)", re.IGNORECASE), "так далее", "сокращение"),
     (re.compile(r"(?<!\w)т\.\s*п\.(?!\w)", re.IGNORECASE), "тому подобное", "сокращение"),
@@ -315,8 +315,6 @@ def _normalize_unprotected(segment: str, transformations: list[dict], warnings: 
         return value
 
     segment = YEAR_IN_GODU_RE.sub(replace_year_in_godu, segment)
-    # Keep unsupported years numeric instead of letting NUMBER_RE expand them.
-    segment = re.sub(r"(?<!\w)(\d{4})(?=\s+году\b)", lambda match: f"\u2060{match.group(1)}", segment)
     segment = _replace_with_diagnostics(
         segment,
         TIME_RE,
@@ -343,7 +341,7 @@ def _normalize_unprotected(segment: str, transformations: list[dict], warnings: 
         "number",
         transformations,
     )
-    return segment.replace("\u2060", "")
+    return segment
 
 
 def analyze_text(text: str) -> dict:
