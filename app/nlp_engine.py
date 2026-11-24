@@ -230,9 +230,9 @@ def _auto_choice(text: str, ambiguity: dict) -> tuple[str, str]:
     # Explicit case-sensitive collocations help distinguish the genitive
     # "муки" (of torment) from accusative "муку" (flour) and from "муки" (flour).
     if word == "муки":
-        if re.search(r"\\b(?:от|без|из-за|полон|полна|полны|испытал|испытала|испытали)\\s+муки\\b", context):
+        if re.search(r"\b(?:от|без|из-за|полон|полна|полны|испытал|испытала|испытали)\s+муки\\b", context):
             return "torment", "высокая"
-        if re.search(r"\\b(?:ел|ела|ели|купил|купила|купили|добавил|добавила|просеял|просеяла)\\s+муку\\b", context):
+        if re.search(r"\b(?:ел|ела|ели|купил|купила|купили|добавил|добавила|просеял|просеяла)\s+муку\\b", context):
             return "flour", "высокая"
 
     scored = []
