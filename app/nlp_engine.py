@@ -334,10 +334,17 @@ def _normalize_unprotected(segment: str, transformations: list[dict], warnings: 
         if re.search(rf"(?<!\w){re.escape(abbreviation)}(?!\w)", segment, re.IGNORECASE):
             warnings.append(f"Сокращение «{abbreviation}» оставлено без изменений: MVP не определяет его форму без контекста.")
 
+    def number_replacement(match: re.Match[str]) -> tuple[str, str]:
+        # A four-digit number immediately followed by «году» is a year.
+        # Unsupported years (for example, 1999) must remain numeric.
+        if len(match.group(1)) == 4 and re.match(r"\s+году\b", match.string[match.end():], re.IGNORECASE):
+            return match.group(1), "Год вне поддерживаемого диапазона оставлен без изменений"
+        return _number_to_words(int(match.group(1))), "Нормализация целого числа"
+
     segment = _replace_with_diagnostics(
         segment,
         NUMBER_RE,
-        lambda match: (_number_to_words(int(match.group(1))), "Нормализация целого числа"),
+        number_replacement,
         "number",
         transformations,
     )
