@@ -83,6 +83,7 @@ PROTECTED_PATTERNS = (
 
 TIME_RE = re.compile(r"(?<!\w)([01]?\d|2[0-3]):([0-5]\d)(?!\w)")
 YEAR_RE = re.compile(r"(?<!\w)(\d{4})\s+г\.(?!\w)", re.IGNORECASE)
+YEAR_IN_GODU_RE = re.compile(r"(?<!\w)(\d{4})(?=\s+году\b)", re.IGNORECASE)
 # A terminal full stop is punctuation, not part of a number.  Dots followed by
 # a digit are protected as decimal/version-like notation; a year plus ``г.``
 # is handled only by the dedicated year rule.
