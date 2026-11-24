@@ -94,12 +94,13 @@ def test_invalid_mode_is_rejected(client: TestClient) -> None:
 
 
 def test_auto_synthesis_passes_auto_prepared_text_to_tts(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.main.nlp_adapter.analyze_text", lambda text: (_ for _ in ()).throw(AssertionError("AUTO must not enter the IMPROVED choice flow")))
     monkeypatch.setattr("app.main.nlp_adapter.auto_resolve_pronunciations", lambda text: {"text_used": "з+амок", "auto_decisions": [{"confidence": "средняя"}]})
     received: dict[str, str] = {}
     def fake_synthesize(text: str, output_path: Path, voice: str | None) -> dict:
         received["text"] = text; output_path.write_bytes(b"RIFF audio"); return {"duration_seconds": 1, "generation_seconds": 0.1}
     monkeypatch.setattr("app.main.tts_adapter.synthesize", fake_synthesize)
-    response = client.post("/api/synthesize", json={"text": "замок", "mode": "auto"})
+    response = client.post("/api/synthesize", json={"text": "замок", "mode": "auto", "choices": {"amb_0": "invalid-stale-choice"}})
     assert response.status_code == 200
     assert received["text"] == "з+амок"
     assert response.json()["auto_decisions"][0]["confidence"] == "средняя"
