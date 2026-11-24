@@ -18,10 +18,12 @@ def test_health(client: TestClient) -> None:
     assert client.get("/api/health").json() == {"status": "ok", "service": "madrigal-tts"}
 
 
-def test_root_serves_frontend(client: TestClient) -> None:
+def test_root_serves_only_two_modes(client: TestClient) -> None:
     response = client.get("/")
     assert response.status_code == 200
-    assert "Madrigal TTS" in response.text
+    assert "BASE" in response.text and "AUTO" in response.text
+    assert "IMPROVED" not in response.text
+    assert "словар" not in response.text.lower()
 
 
 def test_analyze_returns_nlp_result(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -44,85 +46,41 @@ def test_analyze_returns_503_when_nlp_is_unavailable(client: TestClient, monkeyp
 
 def test_base_synthesis(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_synthesize(text: str, output_path: Path, voice: str | None) -> dict:
+        assert text == "Текст"
         output_path.write_bytes(b"RIFF test audio")
         return {"duration_seconds": 1.25, "generation_seconds": 0.5}
-
     monkeypatch.setattr("app.main.tts_adapter.synthesize", fake_synthesize)
     response = client.post("/api/synthesize", json={"text": "Текст", "mode": "base"})
     assert response.status_code == 200
     body = response.json()
-    assert body["mode"] == "base"
-    assert body["text_used"] == "Текст"
+    assert body["mode"] == "base" and body["text_used"] == "Текст"
     assert client.get(body["audio_url"]).status_code == 200
 
 
-def test_improved_requires_choice(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.main.nlp_adapter.analyze_text", lambda text: {"ambiguities": [{"id": "amb_0", "status": "needs_choice"}]})
-    response = client.post("/api/synthesize", json={"text": "замок", "mode": "improved"})
-    assert response.status_code == 409
-
-
-def test_improved_synthesis_applies_choices(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.main.nlp_adapter.analyze_text", lambda text: {"ambiguities": [{"id": "amb_0", "status": "needs_choice"}]})
-    monkeypatch.setattr("app.main.nlp_adapter.apply_pronunciation_choices", lambda text, choices: {"text_used": "за́мок"})
-
-    def fake_synthesize(text: str, output_path: Path, voice: str | None) -> dict:
-        assert text == "за́мок"
-        output_path.write_bytes(b"RIFF test audio")
-        return {"duration_seconds": 1, "generation_seconds": 0.1}
-
-    monkeypatch.setattr("app.main.tts_adapter.synthesize", fake_synthesize)
-    response = client.post("/api/synthesize", json={"text": "замок", "mode": "improved", "choices": {"amb_0": "building"}})
-    assert response.status_code == 200
-    assert response.json()["text_used"] == "за́мок"
-
-
-def test_improved_passes_choice_prepared_text_to_tts(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.main.nlp_adapter.analyze_text", lambda text: {"ambiguities": [{"id": "amb_0", "status": "needs_choice"}]})
-    monkeypatch.setattr("app.main.nlp_adapter.apply_pronunciation_choices", lambda text, choices: {"text_used": "зам+ок"})
-    received: dict[str, str] = {}
-    def fake_synthesize(text: str, output_path: Path, voice: str | None) -> dict:
-        received["text"] = text; output_path.write_bytes(b"RIFF audio"); return {"duration_seconds": 1, "generation_seconds": 0.1}
-    monkeypatch.setattr("app.main.tts_adapter.synthesize", fake_synthesize)
-    response = client.post("/api/synthesize", json={"text": "замок", "mode": "improved", "choices": {"amb_0": "lock"}})
-    assert response.status_code == 200
-    assert received["text"] == "зам+ок"
-
-
-def test_invalid_mode_is_rejected(client: TestClient) -> None:
-    assert client.post("/api/synthesize", json={"text": "Текст", "mode": "unknown"}).status_code == 422
-
-
-def test_auto_synthesis_passes_auto_prepared_text_to_tts(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.main.nlp_adapter.analyze_text", lambda text: (_ for _ in ()).throw(AssertionError("AUTO must not enter the IMPROVED choice flow")))
+def test_auto_synthesis_uses_auto_prepared_text_without_manual_choices(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.main.nlp_adapter.auto_resolve_pronunciations", lambda text: {"text_used": "з+амок", "auto_decisions": [{"confidence": "средняя"}]})
-    received: dict[str, str] = {}
+    received = {}
     def fake_synthesize(text: str, output_path: Path, voice: str | None) -> dict:
-        received["text"] = text; output_path.write_bytes(b"RIFF audio"); return {"duration_seconds": 1, "generation_seconds": 0.1}
+        received["text"] = text
+        output_path.write_bytes(b"RIFF audio")
+        return {"duration_seconds": 1, "generation_seconds": 0.1}
     monkeypatch.setattr("app.main.tts_adapter.synthesize", fake_synthesize)
-    response = client.post("/api/synthesize", json={"text": "замок", "mode": "auto", "choices": {"amb_0": "invalid-stale-choice"}})
+    response = client.post("/api/synthesize", json={"text": "замок", "mode": "auto"})
     assert response.status_code == 200
     assert received["text"] == "з+амок"
     assert response.json()["auto_decisions"][0]["confidence"] == "средняя"
 
 
+def test_choices_contract_is_rejected(client: TestClient) -> None:
+    response = client.post("/api/synthesize", json={"text": "замок", "mode": "auto", "choices": {"amb_0": "lock"}})
+    assert response.status_code == 422
+
+
+def test_improved_mode_is_removed(client: TestClient) -> None:
+    response = client.post("/api/synthesize", json={"text": "замок", "mode": "improved"})
+    assert response.status_code == 422
+
+
 def test_unknown_and_unsafe_audio_paths_are_not_served(client: TestClient) -> None:
     assert client.get("/outputs/missing.wav").status_code == 404
     assert client.get("/outputs/%2E%2E%2Fsecret.wav").status_code in {404, 422}
-
-
-def test_pronunciation_dictionary_api(client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.pronunciation_dictionary.PATH", tmp_path / "pronunciations.json")
-    entry = {"word": "атлас", "options": [
-        {"id": "maps", "display": "а́тлас", "tts_text": "+атлас", "meaning": "Карты"},
-        {"id": "fabric", "display": "атла́с", "tts_text": "атл+ас", "meaning": "Ткань"},
-    ]}
-    assert client.post("/api/pronunciations", json=entry).status_code == 201
-    assert client.post("/api/pronunciations", json=entry).status_code == 409
-    assert client.get("/api/pronunciations").json()["entries"][0]["word"] == "атлас"
-    assert client.put("/api/pronunciations/атлас", json=entry).status_code == 200
-    assert client.delete("/api/pronunciations/атлас").status_code == 204
-
-
-def test_pronunciation_dictionary_rejects_invalid_entry(client: TestClient) -> None:
-    assert client.post("/api/pronunciations", json={"word": "атлас", "options": []}).status_code == 422
