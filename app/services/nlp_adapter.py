@@ -44,3 +44,14 @@ def apply_pronunciation_choices(text: str, choices: dict[str, str]) -> dict[str,
             "NLP должен вернуть объект с полем text_used для синтеза."
         )
     return result
+
+
+def auto_resolve_pronunciations(text: str) -> dict[str, Any]:
+    engine = _engine()
+    function = getattr(engine, "auto_resolve_pronunciations", None)
+    if not callable(function):
+        raise IntegrationContractError("NLP-модуль не предоставляет auto_resolve_pronunciations(text).")
+    result = function(text)
+    if not isinstance(result, dict) or not isinstance(result.get("text_used"), str):
+        raise IntegrationContractError("AUTO-NLP должен вернуть объект с полем text_used.")
+    return result

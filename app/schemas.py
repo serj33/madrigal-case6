@@ -8,6 +8,7 @@ from app.config import MAX_TEXT_LENGTH
 class SynthesisMode(str, Enum):
     base = "base"
     improved = "improved"
+    auto = "auto"
 
 
 class TextRequest(BaseModel):

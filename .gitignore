@@ -2,3 +2,12 @@ __pycache__/
 .pytest_cache/
 .venv/
 outputs/*.wav
+models/*.pt
+*.log
+.env
+.env.*
+.mypy_cache/
+.ruff_cache/
+.idea/
+.vscode/
+*.tmp
