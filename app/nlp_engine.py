@@ -52,6 +52,10 @@ HOMOGRAPH_FORMS: dict[str, Homograph] = {
         {"id": "flour", "display": f"муки{ACCENT}", "tts_text": "мук+и", "meaning": "Пищевой продукт"},
         {"id": "torment", "display": f"му{ACCENT}ки", "tts_text": "м+уки", "meaning": "Страдания, мучения"},
     )),
+    "муку": Homograph((
+        {"id": "flour", "display": f"мук{ACCENT}у", "tts_text": "мук+у", "meaning": "Пищевой продукт"},
+        {"id": "torment", "display": f"му{ACCENT}ку", "tts_text": "м+уку", "meaning": "Страдание"},
+    )),
     "атлас": Homograph((
         {"id": "maps", "display": f"а{ACCENT}тлас", "tts_text": "+атлас", "meaning": "Сборник карт"},
         {"id": "fabric", "display": f"атла{ACCENT}с", "tts_text": "атл+ас", "meaning": "Ткань"},
@@ -235,6 +239,11 @@ def _auto_choice(text: str, ambiguity: dict) -> tuple[str, str]:
             return "torment", "высокая"
         if re.search(r"\b(?:ел|ела|ели|купил|купила|купили|добавил|добавила|просеял|просеяла)\s+муку\b", context):
             return "flour", "высокая"
+    if word == "муку":
+        if re.search(r"\b(?:от|без|из-за|полон|полна|полны|испытал|испытала|испытали)\s+муку\b", context):
+            return "torment", "высокая"
+        if re.search(r"\b(?:ел|ела|ели|купил|купила|купили|добавил|добавила|просеял|просеяла)\s+муку\b", context):
+            return "flour", "высокая"
 
     scored = []
     for option in ambiguity["options"]:
@@ -306,6 +315,8 @@ def _normalize_unprotected(segment: str, transformations: list[dict], warnings: 
         return value
 
     segment = YEAR_IN_GODU_RE.sub(replace_year_in_godu, segment)
+    # Keep unsupported years numeric instead of letting NUMBER_RE expand them.
+    segment = re.sub(r"(?<!\w)(\d{4})(?=\s+году\b)", lambda match: f"\u2060{match.group(1)}", segment)
     segment = _replace_with_diagnostics(
         segment,
         TIME_RE,
@@ -325,13 +336,14 @@ def _normalize_unprotected(segment: str, transformations: list[dict], warnings: 
         if re.search(rf"(?<!\w){re.escape(abbreviation)}(?!\w)", segment, re.IGNORECASE):
             warnings.append(f"Сокращение «{abbreviation}» оставлено без изменений: MVP не определяет его форму без контекста.")
 
-    return _replace_with_diagnostics(
+    segment = _replace_with_diagnostics(
         segment,
         NUMBER_RE,
         lambda match: (_number_to_words(int(match.group(1))), "Нормализация целого числа"),
         "number",
         transformations,
     )
+    return segment.replace("\u2060", "")
 
 
 def analyze_text(text: str) -> dict:
