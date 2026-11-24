@@ -32,6 +32,7 @@ async function synthesize(mode) {
     $("player").src = data.audio_url;
     $("download").href = data.audio_url;
     $("metrics").textContent = `${data.mode.toUpperCase()}: ${data.duration_seconds.toFixed(2)} с; генерация ${data.generation_seconds.toFixed(2)} с`;
+    $("normalized-text").textContent = data.normalized_text || text.value;
     $("text-used").textContent = data.text_used;
     const decisions = $("auto-decisions");
     decisions.replaceChildren();
