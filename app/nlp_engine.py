@@ -293,7 +293,8 @@ def auto_resolve_pronunciations(text: str) -> dict:
     def expand_tts_year(match: re.Match[str]) -> str:
         year = int(match.group(1))
         if 1000 <= year <= 2099:
-            return _year_to_words(year)
+            # The regex matches only the digits and leaves the original " году" suffix in place.
+            return _year_to_words(year).removesuffix(" году")
         return match.group(0)
 
     prepared["text_used"] = YEAR_IN_GODU_RE.sub(expand_tts_year, prepared["text_used"])
