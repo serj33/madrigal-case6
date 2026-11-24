@@ -87,6 +87,7 @@ async def synthesize(request: SynthesizeRequest) -> dict:
         "text_used": text_used,
     }
     if applied is not None:
+        response["normalized_text"] = applied.get("normalized_text", request.text)
         response["auto_decisions"] = applied.get("auto_decisions", [])
         response["warnings"] = applied.get("warnings", [])
     return response
