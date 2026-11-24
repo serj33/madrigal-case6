@@ -167,3 +167,9 @@ def test_auto_distinguishes_flour_and_torment_forms_in_one_sentence() -> None:
     result = auto_resolve_pronunciations(text)
     assert result["text_used"] == "Мама мыла раму, пока брат ел мук+у, а сестра страдала от м+уки."
     assert [item["option_id"] for item in result["auto_decisions"]] == ["flour", "torment"]
+
+
+def test_auto_marks_accusative_muku_as_flour_after_eating_verb() -> None:
+    result = auto_resolve_pronunciations("Брат ел муку.")
+    assert result["text_used"] == "Брат ел мук+у."
+    assert result["auto_decisions"][0]["option_id"] == "flour"
